@@ -15,6 +15,7 @@ import {
 } from './callHandler.js';
 import { ChatRepository } from '../repositories/ChatRepository.js';
 import { CallRepository } from '../repositories/CallRepository.js';
+import { ContactRepository } from '../repositories/ContactRepository.js';
 
 export const serverInstanceId = crypto.randomUUID();
 export const localSessions = new Map<string, Set<WebSocket>>();
@@ -32,6 +33,15 @@ export function initWebSocketServer(httpServer: Server) {
       clientWs.isAlive = false;
       clientWs.ping();
     });
+
+    // Refresh presence in Redis for all users with active socket sessions
+    for (const [activeUserId, sockets] of localSessions.entries()) {
+      if (sockets.size > 0) {
+        setUserOnline(activeUserId, serverInstanceId).catch((err) => {
+          console.error(`[WS Heartbeat] Failed to refresh presence for user ${activeUserId}:`, err);
+        });
+      }
+    }
   }, 30000);
 
   wss.on('close', () => {
@@ -83,10 +93,11 @@ export function initWebSocketServer(httpServer: Server) {
     const userId = user.id;
     console.log(`[WS] Connection established. User ID: ${userId} (${user.username})`);
 
-    // Setup heartbeat flag
+    // Setup heartbeat flag & refresh presence on pong
     (ws as any).isAlive = true;
     ws.on('pong', () => {
       (ws as any).isAlive = true;
+      setUserOnline(userId, serverInstanceId).catch(() => {});
     });
 
     // Add to local sessions
@@ -105,12 +116,21 @@ export function initWebSocketServer(httpServer: Server) {
     // Track online in Redis
     await setUserOnline(userId, serverInstanceId);
 
-    // If first connection, broadcast status = online to all rooms they belong to
+    // If first connection, broadcast status = online to all rooms they belong to and contacts who added them
     if (isFirstConnection) {
       try {
         const roomIds = await ChatRepository.getRoomIdsForUser(userId);
         await Promise.all(roomIds.map(roomId =>
           publishToRoom(roomId, {
+            type: 'presence_change',
+            userId,
+            status: 'online',
+          })
+        ));
+
+        const followerIds = await ContactRepository.getFollowerUserIds(userId);
+        await Promise.all(followerIds.map(followerId =>
+          publishToUser(followerId, {
             type: 'presence_change',
             userId,
             status: 'online',
@@ -125,6 +145,9 @@ export function initWebSocketServer(httpServer: Server) {
     let windowStart = Date.now();
 
     ws.on('message', async (message) => {
+      // Touch user presence on any incoming activity
+      setUserOnline(userId, serverInstanceId).catch(() => {});
+
       // Per-connection message rate limiting (max 30 messages/second)
       const now = Date.now();
       if (now - windowStart > 1000) {
@@ -189,11 +212,20 @@ export function initWebSocketServer(httpServer: Server) {
           localSessions.delete(userId);
           await setUserOffline(userId);
 
-          // Broadcast status = offline to all rooms they belong to
+          // Broadcast status = offline to all rooms they belong to and contacts who added them
           try {
             const roomIds = await ChatRepository.getRoomIdsForUser(userId);
             await Promise.all(roomIds.map(roomId =>
               publishToRoom(roomId, {
+                type: 'presence_change',
+                userId,
+                status: 'offline',
+              })
+            ));
+
+            const followerIds = await ContactRepository.getFollowerUserIds(userId);
+            await Promise.all(followerIds.map(followerId =>
+              publishToUser(followerId, {
                 type: 'presence_change',
                 userId,
                 status: 'offline',

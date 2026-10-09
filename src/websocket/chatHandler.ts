@@ -1,12 +1,15 @@
 import { WebSocket } from 'ws';
 import { ChatRepository } from '../repositories/ChatRepository.js';
 import { publishToRoom, publishToUser } from './pubsub.js';
+import { setUserOnline } from '../services/presence.js';
+import { serverInstanceId } from './server.js';
 
 export async function handleSendMessage(
   userId: string,
   data: { roomId: string; content: string; attachmentUrl?: string },
   ws: WebSocket
 ) {
+  setUserOnline(userId, serverInstanceId).catch(() => {});
   const { roomId, content, attachmentUrl } = data;
   if (!roomId || !content) {
     console.warn('[ChatHandler] send_message validation failed: missing roomId or content');
@@ -54,6 +57,7 @@ export async function handleSendMessage(
 }
 
 export async function handleTyping(userId: string, data: { roomId: string; isTyping: boolean }, ws: WebSocket) {
+  setUserOnline(userId, serverInstanceId).catch(() => {});
   const { roomId, isTyping } = data;
   if (!roomId || isTyping === undefined) {
     ws.send(JSON.stringify({ type: 'error', message: 'Missing roomId or isTyping' }));
@@ -81,6 +85,7 @@ export async function handleTyping(userId: string, data: { roomId: string; isTyp
 }
 
 export async function handleMarkRead(userId: string, data: { roomId: string }, ws: WebSocket) {
+  setUserOnline(userId, serverInstanceId).catch(() => {});
   const { roomId } = data;
   if (!roomId) {
     ws.send(JSON.stringify({ type: 'error', message: 'Missing roomId' }));

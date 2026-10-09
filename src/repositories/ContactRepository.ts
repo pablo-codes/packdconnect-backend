@@ -50,4 +50,13 @@ export class ContactRepository {
       [userId, contactUserId]
     );
   }
+
+  static async getFollowerUserIds(contactUserId: string): Promise<string[]> {
+    const result = await query(
+      'SELECT user_id FROM contacts WHERE contact_user_id = $1',
+      [contactUserId]
+    );
+    return result.rows.map((row: any) => row.user_id);
+  }
 }
+
