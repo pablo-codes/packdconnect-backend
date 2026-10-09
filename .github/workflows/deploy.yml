@@ -1,0 +1,59 @@
+name: Rsync Bare Metal Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # BUILD STAGE (Happens on GitHub, not your server)
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install and Build
+        run: |
+          bun install
+          bun run build
+          # Remove dev dependencies so they don't bloat the server upload
+          bun install --production
+
+      # SSH KEY SETUP (Required for rsync)
+      - name: Setup SSH Key for Rsync
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # Automatically trust the VPS to prevent strict host checking errors
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
+      # SYNC STAGE (Push files to the server)
+      - name: Deploy files via Rsync
+        run: |
+          # The --delete flag removes files on the server that were deleted in Git
+          # We exclude .env so we don't overwrite production variables
+          rsync -avz --delete \
+            --exclude '.git' \
+            --exclude '.env' \
+            ./ ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_HOST }}:/var/www/packdconnect/backend/
+
+      # RESTART STAGE (Restart systemd)
+      - name: Restart Systemd Service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            # Restart the native Linux service
+            # (Note: ${{ secrets.VPS_USERNAME }} needs sudo privileges to run systemctl)
+            sudo systemctl restart packdconnect-backend
