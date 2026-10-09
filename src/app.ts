@@ -9,6 +9,9 @@ import historyRoutes from './routes/historyRoutes.js';
 
 const app = express();
 
+// Trust the first reverse proxy (Nginx) for accurate client IP and express-rate-limit
+app.set('trust proxy', 1);
+
 // Apply security headers
 app.use(helmet());
 
