@@ -5,9 +5,19 @@ dotenv.config();
 
 const isProd = process.env.NODE_ENV === 'production';
 
-let redisConfig: any = process.env.REDIS_URL || 'redis://localhost:6379';
+let redisConfig: any;
 
-if (isProd && process.env.REDIS_HOST) {
+if (process.env.REDIS_PASSWORD) {
+  redisConfig = {
+    host: process.env.REDIS_HOST || '127.0.0.1',
+    port: parseInt(process.env.REDIS_PORT || '6379', 10),
+    password: process.env.REDIS_PASSWORD,
+  };
+} else {
+  redisConfig = process.env.REDIS_URL || 'redis://localhost:6379';
+}
+
+if (isProd && process.env.REDIS_HOST && process.env.REDIS_ACCESS_KEY) {
   redisConfig = {
     host: process.env.REDIS_HOST,
     port: 6380,
