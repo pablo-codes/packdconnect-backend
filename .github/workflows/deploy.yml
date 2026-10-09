@@ -1,4 +1,4 @@
-name: Rsync Bare Metal Deploy
+name: Backend Deploy
 
 on:
   push:

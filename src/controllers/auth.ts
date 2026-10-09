@@ -1,6 +1,16 @@
 import { Request, Response } from 'express';
 import { AuthService } from '../services/AuthService.js';
 
+const isProd = process.env.NODE_ENV === 'production';
+const getCookieOptions = (maxAge?: number) => ({
+  httpOnly: true,
+  secure: isProd,
+  sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+  domain: process.env.COOKIE_DOMAIN || undefined,
+  path: '/',
+  ...(maxAge !== undefined ? { maxAge } : {}),
+});
+
 function getRefreshTokenFromCookie(req: Request): string | null {
   const cookieHeader = req.headers.cookie;
   if (!cookieHeader) return null;
@@ -38,27 +48,14 @@ export async function register(req: Request, res: Response) {
   try {
     const { user, tokens } = await AuthService.register(username, email, password);
 
-    res.cookie('refreshToken', tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/'
-    });
-
-    res.cookie('accessToken', tokens.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 15 * 60 * 1000,
-      path: '/'
-    });
+    res.cookie('refreshToken', tokens.refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+    res.cookie('accessToken', tokens.accessToken, getCookieOptions(15 * 60 * 1000));
 
     return res.status(201).json({ user });
   } catch (error: any) {
     console.error('[Auth Controller] Register error:', error);
     if (error.message === 'Username is already taken' || error.message === 'User with this email already exists') {
-      return res.status(400).json({ error: error.message });
+      return res.status(409).json({ error: error.message });
     }
     return res.status(500).json({ error: 'Internal server error' });
   }
@@ -74,21 +71,8 @@ export async function login(req: Request, res: Response) {
   try {
     const { user, tokens } = await AuthService.login(email, password);
 
-    res.cookie('refreshToken', tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/'
-    });
-
-    res.cookie('accessToken', tokens.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 15 * 60 * 1000,
-      path: '/'
-    });
+    res.cookie('refreshToken', tokens.refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+    res.cookie('accessToken', tokens.accessToken, getCookieOptions(15 * 60 * 1000));
 
     return res.json({ user });
   } catch (error: any) {
@@ -110,21 +94,8 @@ export async function refresh(req: Request, res: Response) {
   try {
     const { user, tokens } = await AuthService.refresh(refreshToken);
 
-    res.cookie('refreshToken', tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      path: '/'
-    });
-
-    res.cookie('accessToken', tokens.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 15 * 60 * 1000,
-      path: '/'
-    });
+    res.cookie('refreshToken', tokens.refreshToken, getCookieOptions(7 * 24 * 60 * 60 * 1000));
+    res.cookie('accessToken', tokens.accessToken, getCookieOptions(15 * 60 * 1000));
 
     return res.json({ user });
   } catch (error: any) {
@@ -138,18 +109,8 @@ export async function refresh(req: Request, res: Response) {
 
 export async function logout(req: Request, res: Response) {
   try {
-    res.clearCookie('refreshToken', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/'
-    });
-    res.clearCookie('accessToken', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/'
-    });
+    res.clearCookie('refreshToken', getCookieOptions());
+    res.clearCookie('accessToken', getCookieOptions());
     return res.json({ message: 'Logged out successfully' });
   } catch (error: any) {
     console.error('[Auth Controller] Logout error:', error);
