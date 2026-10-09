@@ -32,6 +32,15 @@ export async function handleCallInitiate(
 
     const callLog = await CallRepository.createCallLog(roomId, hostId, callType);
 
+    // Acknowledge call initiation back to caller with the persistent callId
+    ws.send(JSON.stringify({
+      type: 'call_initiated',
+      callId: callLog.id,
+      roomId,
+      targetUserId,
+      callType,
+    }));
+
     await publishToUser(targetUserId, {
       type: 'call_incoming',
       callId: callLog.id,
